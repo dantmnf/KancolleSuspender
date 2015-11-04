@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
@@ -19,7 +20,6 @@ namespace KancolleSuspender
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            Helper.SendMessage(startButton.Handle, Helper.BCM_SETSHIELD, (IntPtr)0, (IntPtr)1);
             intervalInput.Value = 5;
             this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
@@ -95,15 +95,26 @@ namespace KancolleSuspender
                 stopMonitor();
             if(Helper.IsIconic(monitoredWindow.hWnd) && !fakeWindow.Visible)
             {
+                List<IntPtr> targetWindows = new List<IntPtr>();
                 Debug.WriteLine("hide & suspending {0} {1}", monitoredWindow.hWnd, monitoredWindow.ownerProcess.Id);
-                
-                Helper.ShowWindow(monitoredWindow.hWnd, Helper.ShowWindowCommands.Hide);
+                Helper.EnumWindows((hWnd, lParam) => {
+                    if (Helper.IsWindowVisible(hWnd) && Helper.ProcessFromWindow(hWnd).Id == monitoredWindow.ownerProcess.Id)
+                        targetWindows.Add(hWnd);
+                    return true;
+                }, IntPtr.Zero);
+                foreach (var hWnd in targetWindows)
+                {
+                    Helper.ShowWindow(hWnd, Helper.ShowWindowCommands.Hide);
+                }
                 Helper.SuspendProcess(monitoredWindow.ownerProcess);
                 monitoredWindow.processSuspended = true;
                 fakeWindow.ActivateCallback = () => {
                     Helper.ResumeProcess(monitoredWindow.ownerProcess);
                     monitoredWindow.processSuspended = false;
-                    Helper.ShowWindow(monitoredWindow.hWnd, Helper.ShowWindowCommands.Show);
+                    foreach (var hWnd in targetWindows)
+                    {
+                        Helper.ShowWindow(hWnd, Helper.ShowWindowCommands.Show);
+                    }
                     Helper.ShowWindow(monitoredWindow.hWnd, Helper.ShowWindowCommands.Restore);
                     fakeWindow.Close();
                     fakeWindow = new FakeWindow();
